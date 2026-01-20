@@ -1,0 +1,13 @@
+[package]
+name = "host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libloading = "0.8"
+once_cell = "1.19"
+module_api = { path = "../module_api" }
+pam = { path = "../pam", package = "pam-bindings" }
+
+[lib]
+crate-type = ["cdylib"]
