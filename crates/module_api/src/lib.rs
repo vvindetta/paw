@@ -1,7 +1,5 @@
-use std::ffi::c_char;
-
 #[repr(C)]
 pub struct Module {
-    pub name: *const c_char,
+    pub name: &'static [u8],
     pub authenticate: extern "C" fn() -> u32,
 }

@@ -24,9 +24,11 @@ impl Module {
             let module_sym: Symbol<*const ModuleApi> = lib.get(b"module\0")?;
             let module_ref: &ModuleApi = &**module_sym; // deref pointer to struct
 
-            let name = CStr::from_ptr(module_ref.name)
+            let name = CStr::from_bytes_with_nul(module_ref.name)
+                .unwrap()
                 .to_string_lossy()
                 .into_owned();
+
             let authenticate = module_ref.authenticate;
 
             Ok(Module {
@@ -48,7 +50,7 @@ struct Paw;
 pam::pam_hooks!(Paw);
 
 impl PamHooks for Paw {
-    fn sm_authenticate(pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
+    fn sm_authenticate(_pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
         for (name, module) in MODULES.iter() {
             println!("Starting {name} module");
 

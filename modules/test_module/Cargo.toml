@@ -1,2 +1,11 @@
+[package]
+name = "test_module"
+version = "0.1.0"
+edition = "2021"
+
 [lib]
+name = "test_module"
 crate-type = ["cdylib"]
+
+[dependencies]
+module_api = { path = "../../crates/module_api" }

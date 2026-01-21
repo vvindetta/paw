@@ -1,3 +1,8 @@
 [workspace]
-members = ["crates/module_api", "crates/host", "crates/pam"]
+members = [
+  "crates/module_api",
+  "crates/host",
+  "crates/pam",
+  "modules/test_module",
+]
 resolver = "2"
