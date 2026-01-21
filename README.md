@@ -1,1 +1,1 @@
-# WIP
+# PAW is modular multifactor module for PAM (wip)
