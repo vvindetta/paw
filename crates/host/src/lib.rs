@@ -42,7 +42,7 @@ impl Module {
 
 // TODO
 static MODULES: Lazy<HashMap<String, Module>> = Lazy::new(|| {
-    let module = Module::load("/etc/paw/modules/password.so").expect("Failed to load module");
+    let module = Module::load("/lib64/security/paw/paw_test.so").expect("Failed to load module");
     HashMap::from([(module.name.to_string(), module)])
 });
 
