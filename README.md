@@ -16,7 +16,7 @@
 ```/lib64/security/paw/paw_test.so```
 
 
-# Testing
+## Testing
 
 1. Install ```pamtester``` via your system package manager
 
