@@ -2,4 +2,8 @@
 
 ## Install
 
-```sudo install -m 0644 -o root -g root paw.so /usr/lib64/security/paw.so```
+
+```sudo mkdir /lib64/security/paw```
+
+
+```sudo install -m 0644 -o root -g root paw.so /usr/lib64/security/pam_paw.so```
