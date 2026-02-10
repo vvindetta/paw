@@ -1,6 +1,6 @@
 use module_api::Module;
 
-extern "C" fn authenticate() -> u32 {
+extern "C" fn authenticate(_attemps: i32) -> u32 {
     // real auth logic
     println!("Success!");
     0

@@ -1,7 +1,6 @@
-use std::collections::HashMap;
 use std::ffi::CStr;
-
-use once_cell::sync::Lazy;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 
 use pam::constants::{PamFlag, PamResultCode};
 use pam::module::{PamHandle, PamHooks};
@@ -12,7 +11,7 @@ use module_api::Module as ModuleApi;
 struct Module {
     _lib: Library,
     name: String,
-    authenticate: extern "C" fn() -> u32,
+    authenticate: extern "C" fn(i32) -> u32,
 }
 
 impl Module {
@@ -40,21 +39,46 @@ impl Module {
     }
 }
 
-// TODO
-static MODULES: Lazy<HashMap<String, Module>> = Lazy::new(|| {
-    let module = Module::load("/lib64/security/paw/paw_test.so").expect("Failed to load module");
-    HashMap::from([(module.name.to_string(), module)])
-});
+fn get_modules() -> Result<(Vec<Module, i32), Error> {
+    let mut modules: Vec<(Module, i32)> = Vec::new();
+
+    let file_handle = File::open("/etc/paw.txt")?;
+    let reader = BufReader::new(file_handle);
+
+    for line_result in reader.lines() {
+        let line = line_result?;
+
+        let mut tokens_iter = line.split_whitespace();
+        let path = tokens_iter.next();
+        let attempts_number = tokens_iter.next();
+
+        let Some(path) = path else {
+            break; // empty line
+        };
+        let attempts_number_value: i32 = match attempts_number {
+            Some(attempts_text) => attempts_text.parse().unwrap_or(3),
+            None => 3,
+        };
+
+        let module = Module::load(path)?;
+
+        modules.push((module, attempts_number_value));
+    }
+    return Ok(modules);
+}
 
 struct Paw;
 pam::pam_hooks!(Paw);
 
 impl PamHooks for Paw {
     fn sm_authenticate(_pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
-        for (name, module) in MODULES.iter() {
-            println!("Starting {name} module");
+        let modules = get_modules();
 
-            let ok = (module.authenticate)();
+        for (module, attempts) in modules {
+            println!("Starting {} module", module.name);
+
+            let ok = (module.authenticate)(attempts);
+
             if ok != 0 {
                 return PamResultCode::PAM_AUTH_ERR;
             }
