@@ -4,5 +4,6 @@ members = [
   "crates/host",
   "crates/pam",
   "modules/test_module",
+  "modules/fingerprint",
 ]
 resolver = "2"

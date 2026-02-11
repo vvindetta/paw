@@ -11,6 +11,7 @@ extern "C" fn authenticate(attemps: i32) -> u32 {
         if output.status.success() {
             return 0;
         }
+    }
     1
 }
 
