@@ -8,6 +8,6 @@ extern "C" fn authenticate(_attemps: i32) -> u32 {
 
 #[no_mangle]
 pub static module: Module = Module {
-    name: b"test_module\0",
+    name: b"paw_test\0",
     authenticate,
 };
