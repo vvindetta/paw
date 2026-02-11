@@ -1,9 +1,10 @@
+use pam::constants::{PamFlag, PamResultCode};
+use pam::module::{PamHandle, PamHooks};
+
+use std::error::Error;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-
-use pam::constants::{PamFlag, PamResultCode};
-use pam::module::{PamHandle, PamHooks};
 
 use libloading::{Library, Symbol};
 use module_api::Module as ModuleApi;
@@ -39,7 +40,7 @@ impl Module {
     }
 }
 
-fn get_modules() -> Result<(Vec<Module, i32), Error> {
+fn get_modules() -> Result<Vec<(Module, i32)>, Box<dyn Error>> {
     let mut modules: Vec<(Module, i32)> = Vec::new();
 
     let file_handle = File::open("/etc/paw.txt")?;
@@ -72,12 +73,15 @@ pam::pam_hooks!(Paw);
 
 impl PamHooks for Paw {
     fn sm_authenticate(_pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
-        let modules = get_modules();
+        let modules = match get_modules() {
+            Ok(modules_vec) => modules_vec,
+            Err(_) => return PamResultCode::PAM_AUTH_ERR,
+        };
 
-        for (module, attempts) in modules {
+        for (module, attempts) in modules.iter() {
             println!("Starting {} module", module.name);
 
-            let ok = (module.authenticate)(attempts);
+            let ok = (module.authenticate)(*attempts);
 
             if ok != 0 {
                 return PamResultCode::PAM_AUTH_ERR;
