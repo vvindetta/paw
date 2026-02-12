@@ -1,0 +1,11 @@
+[package]
+name = "paw_password"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "paw_password"
+crate-type = ["cdylib"]
+
+[dependencies]
+module_api = { path = "../../crates/module_api" }

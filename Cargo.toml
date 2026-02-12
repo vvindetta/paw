@@ -5,5 +5,7 @@ members = [
   "crates/pam",
   "modules/test_module",
   "modules/fingerprint",
+  "modules/password",
+  "password_hasher",
 ]
 resolver = "2"
