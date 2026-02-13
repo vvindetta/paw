@@ -9,3 +9,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 module_api = { path = "../../crates/module_api" }
+rpassword = "7"
+argon2 = "0.5"
+rand_core = { version = "0.6", features = ["getrandom"] }

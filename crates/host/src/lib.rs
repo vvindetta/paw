@@ -11,7 +11,7 @@ use module_api::Module as ModuleApi;
 
 struct Module {
     _lib: Library,
-    name: String,
+    _name: String,
     authenticate: extern "C" fn(i32) -> u32,
 }
 
@@ -24,7 +24,7 @@ impl Module {
             let module_sym: Symbol<*const ModuleApi> = lib.get(b"module\0")?;
             let module_ref: &ModuleApi = &**module_sym; // deref pointer to struct
 
-            let name = CStr::from_bytes_with_nul(module_ref.name)
+            let _name = CStr::from_bytes_with_nul(module_ref.name)
                 .unwrap()
                 .to_string_lossy()
                 .into_owned();
@@ -33,7 +33,7 @@ impl Module {
 
             Ok(Module {
                 _lib: lib,
-                name,
+                _name,
                 authenticate,
             })
         }
@@ -79,7 +79,7 @@ impl PamHooks for Paw {
         };
 
         for (module, attempts) in modules.iter() {
-            println!("Starting {} module", module.name);
+            // println!("Starting {} module", module.name);
 
             let ok = (module.authenticate)(*attempts);
 
