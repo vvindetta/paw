@@ -1,4 +1,4 @@
-# PAW is modular multifactor module for PAM
+# Multi-factor for PAM. GNU+Linux auth with modules in any combination.
 
 ![screenshot.jpg](screenshot.jpg)
 
