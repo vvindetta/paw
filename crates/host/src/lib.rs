@@ -38,7 +38,7 @@ impl Module {
 fn get_modules() -> Result<Vec<(Module, i32)>, Box<dyn Error>> {
     let mut modules: Vec<(Module, i32)> = Vec::new();
 
-    let file_handle = File::open("/etc/paw.txt")?;
+    let file_handle = File::open("/etc/paw.conf")?;
     let reader = BufReader::new(file_handle);
 
     for line_result in reader.lines() {

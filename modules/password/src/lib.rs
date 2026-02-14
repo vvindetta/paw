@@ -21,7 +21,7 @@ extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
         1
     }
 
-    let path_to_password_hash = "/etc/paw_password_hash.txt";
+    let path_to_password_hash = "/etc/paw_shadow";
 
     let file_handle = match File::open(path_to_password_hash) {
         Ok(file_handle) => file_handle,
