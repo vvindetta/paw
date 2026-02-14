@@ -1,18 +1,19 @@
+use module_api::Module as ModuleApi;
 use pam::constants::{PamFlag, PamResultCode};
 use pam::module::{PamHandle, PamHooks};
 
+use libloading::{Library, Symbol};
+
 use std::error::Error;
+use std::ffi::c_char;
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use libloading::{Library, Symbol};
-use module_api::Module as ModuleApi;
-
 struct Module {
     _lib: Library,
-    _name: String,
-    authenticate: extern "C" fn(i32) -> u32,
+    authenticate: extern "C" fn(attempts: i32, username: *const c_char) -> u32,
 }
 
 impl Module {
@@ -24,16 +25,10 @@ impl Module {
             let module_sym: Symbol<*const ModuleApi> = lib.get(b"module\0")?;
             let module_ref: &ModuleApi = &**module_sym; // deref pointer to struct
 
-            let _name = CStr::from_bytes_with_nul(module_ref.name)
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
-
             let authenticate = module_ref.authenticate;
 
             Ok(Module {
                 _lib: lib,
-                _name,
                 authenticate,
             })
         }
@@ -72,16 +67,24 @@ struct Paw;
 pam::pam_hooks!(Paw);
 
 impl PamHooks for Paw {
-    fn sm_authenticate(_pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
+    fn sm_authenticate(pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
         let modules = match get_modules() {
             Ok(modules_vec) => modules_vec,
             Err(_) => return PamResultCode::PAM_AUTH_ERR,
         };
 
-        for (module, attempts) in modules.iter() {
-            // println!("Starting {} module", module.name);
+        let username_str = match pamh.get_user(None) {
+            Ok(name) => name,
+            Err(_) => return PamResultCode::PAM_AUTH_ERR,
+        };
 
-            let ok = (module.authenticate)(*attempts);
+        let username_c = match CString::new(username_str) {
+            Ok(value) => value,
+            Err(_) => return PamResultCode::PAM_AUTH_ERR,
+        };
+
+        for (module, attempts) in modules.iter() {
+            let ok = (module.authenticate)(*attempts, username_c.as_ptr());
 
             if ok != 0 {
                 return PamResultCode::PAM_AUTH_ERR;

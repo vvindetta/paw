@@ -1,4 +1,5 @@
 use module_api::Module;
+use std::ffi::c_char;
 use std::fs::File;
 use std::io::{self, Write};
 use std::io::{BufRead, BufReader};
@@ -8,7 +9,7 @@ use argon2::{
     Argon2,
 };
 
-extern "C" fn authenticate(attempts: i32) -> u32 {
+extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
     fn success() -> u32 {
         io::stdout().flush().unwrap();
         print!("\r\x1b[2K[\x1b[32mOK\x1b[0m] Password\n");
@@ -89,7 +90,4 @@ extern "C" fn authenticate(attempts: i32) -> u32 {
 }
 
 #[no_mangle]
-pub static module: Module = Module {
-    name: b"paw_password\0",
-    authenticate,
-};
+pub static module: Module = Module { authenticate };
