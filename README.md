@@ -2,6 +2,19 @@
 
 ![screenshot.jpg](screenshot.jpg)
 
+**PAW is designed to avoid exposing the main system password when operating in an unsafe environment. Use it instead with a combination such as a secondary-password + fingerprint.** 
+GrapheneOS-like authentication on your GNU/Linux system.
+
+### Roadmap:
+  - minimum number of successfully passed modules option
+
+  Modules:
+  - ~~Password~~
+  - ~~Fingerprint~~
+  - Faceid
+  - NFC
+  - Trusted Bluetooth/Wi-Fi networks
+
 ## How to install
 
 ### Install ```paw``` as a PAM module
@@ -44,6 +57,7 @@ path_to_paw_module attemps_number
 ```
 
 Default attempts_number is 3 if omitted.
+Order in the config affects the execution sequence.
 
 #### Config example: 
 ```
