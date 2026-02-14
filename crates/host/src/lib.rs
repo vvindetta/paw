@@ -91,16 +91,15 @@ impl PamHooks for Paw {
             }
         }
 
+        print!("\n");
         PamResultCode::PAM_SUCCESS
     }
 
     fn sm_setcred(_pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
-        println!("set credentials");
         PamResultCode::PAM_SUCCESS
     }
 
     fn acct_mgmt(_pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
-        println!("account management");
         PamResultCode::PAM_SUCCESS
     }
 }
