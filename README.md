@@ -1,6 +1,6 @@
 # PAW is modular multifactor module for PAM
 
-![screenshot.png](screenshot.png)
+![screenshot.jpg](screenshot.jpg)
 
 ## How to install
 
