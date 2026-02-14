@@ -113,11 +113,32 @@ account required    pam_permit.so
 
 ## Build
 
+1. Install pam lib
+
+```
+# Debian / Ubuntu
+sudo apt install -y libpam0g-dev
+```
+
+```
+# Fedora
+sudo dnf install -y pam-devel
+```
+
+```
+# Arch
+sudo pacman -S --needed pam
+```
+
+2. Git clone
+
 ```git clone https://codeberg.org/vvindetta/paw.git && cd paw```
+
+3. Build
 
 ```cargo build```
 
-The build will be available inside ```paw/target/debug```.
+The build will be available inside ```paw/target/debug```
 
 #### Main PAM module (controls submodules):
 
