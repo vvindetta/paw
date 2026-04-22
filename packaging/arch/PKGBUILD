@@ -1,0 +1,41 @@
+# Maintainer: PAW Maintainers <maintainers@example.com>
+pkgname=paw
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Multi-factor PAM authentication with pluggable modules"
+arch=('x86_64' 'aarch64')
+url="https://github.com/vvindetta/paw"
+license=('custom')
+depends=('pam')
+makedepends=('rust' 'cargo' 'pam')
+source=()  # Use the checkout directly; see packaging/arch/README.md
+sha256sums=()
+
+build() {
+  cd "${srcdir:-..}"
+  cargo build --release --workspace
+}
+
+check() {
+  cd "${srcdir:-..}"
+  cargo test --release --workspace
+}
+
+package() {
+  cd "${srcdir:-..}"
+
+  local pam_dir="${pkgdir}/usr/lib/security"
+  local sub_dir="${pam_dir}/paw"
+
+  install -dm755 "${pam_dir}"
+  install -dm755 "${sub_dir}"
+  install -dm755 "${pkgdir}/usr/bin"
+
+  install -Dm644 target/release/libhost.so            "${pam_dir}/pam_paw.so"
+  install -Dm644 target/release/libpaw_password.so    "${sub_dir}/paw_password.so"
+  install -Dm644 target/release/libpaw_fingerprint.so "${sub_dir}/paw_fingerprint.so"
+  install -Dm755 target/release/password_hasher       "${pkgdir}/usr/bin/paw-password-hasher"
+
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

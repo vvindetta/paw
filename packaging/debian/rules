@@ -1,0 +1,29 @@
+#!/usr/bin/make -f
+# debian/rules for paw
+#
+# Runs cargo build in release mode and installs the resulting PAM modules and
+# helper binary into the package staging tree.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export CARGO_HOME ?= $(CURDIR)/debian/cargo-home
+
+PAM_SECURITY_DIR ?= /usr/lib/$(DEB_HOST_MULTIARCH)/security
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --workspace
+
+override_dh_auto_test:
+	cargo test --release --workspace
+
+override_dh_auto_install:
+	packaging/install-artifacts.sh \
+	    target/release \
+	    debian/paw \
+	    $(PAM_SECURITY_DIR)
+
+override_dh_auto_clean:
+	cargo clean || true
+	rm -rf debian/cargo-home

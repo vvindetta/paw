@@ -149,3 +149,20 @@ The build will be available inside ```paw/target/debug```
 ```libpaw_fingerprint.so``` -> ```paw_fingerprint.so```
 
 ```libpaw_password.so``` -> ```paw_password.so```
+
+## Packaging
+
+Ready-to-build recipes for `.deb`, `.rpm` and Arch Linux packages live under
+[`packaging/`](packaging). The [`Build packages`](.github/workflows/packages.yml)
+CI workflow exercises all three on every commit. See
+[`docs/packaging.md`](docs/packaging.md) for step-by-step instructions per
+distribution.
+
+## Continuous integration
+
+The [`CI`](.github/workflows/ci.yml) workflow runs on every push and pull
+request to `main`. It performs:
+
+- `cargo fmt -- --check` on PAW's own crates.
+- `cargo clippy -- -D warnings` on PAW's own crates.
+- `cargo build --workspace` and `cargo test --workspace` on Ubuntu.

@@ -50,7 +50,7 @@ extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
     };
 
     print!("\r\x1b[2K"); // clear current line
-    print!("\n"); // create UI line
+    println!(); // create UI line
     print!("\x1b[1A"); // go back to UI line
     print!("\x1b[s"); // save cursor at UI line
     io::stdout().flush().unwrap();

@@ -60,7 +60,7 @@ fn get_modules() -> Result<Vec<(Module, i32)>, Box<dyn Error>> {
 
         modules.push((module, attempts_number_value));
     }
-    return Ok(modules);
+    Ok(modules)
 }
 
 struct Paw;
@@ -91,7 +91,7 @@ impl PamHooks for Paw {
             }
         }
 
-        print!("\n");
+        println!();
         PamResultCode::PAM_SUCCESS
     }
 

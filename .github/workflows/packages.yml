@@ -1,0 +1,106 @@
+name: Build packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  deb:
+    name: Debian / Ubuntu package
+    runs-on: ubuntu-latest
+    container:
+      image: debian:bookworm
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential debhelper devscripts cargo rustc libpam0g-dev \
+            ca-certificates git
+      - uses: actions/checkout@v4
+      - name: Stage debian/ directory
+        run: cp -r packaging/debian debian
+      - name: Build .deb
+        run: dpkg-buildpackage -us -uc -b
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp ../paw_*.deb out/ || true
+          cp ../paw-*.deb out/ || true
+          ls -l out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paw-deb
+          path: out/*.deb
+          if-no-files-found: error
+
+  rpm:
+    name: Fedora RPM package
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:40
+    steps:
+      - name: Install build dependencies
+        run: |
+          dnf install -y rpm-build rpmdevtools cargo rust pam-devel gcc \
+            git tar
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare rpmbuild tree
+        run: |
+          rpmdev-setuptree
+          git archive --prefix=paw-0.1.0/ -o ~/rpmbuild/SOURCES/paw-0.1.0.tar.gz HEAD
+          cp packaging/rpm/paw.spec ~/rpmbuild/SPECS/paw.spec
+      - name: Build RPM
+        run: rpmbuild -ba ~/rpmbuild/SPECS/paw.spec
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          find ~/rpmbuild/RPMS -name 'paw-*.rpm' -exec cp {} out/ \;
+          find ~/rpmbuild/SRPMS -name 'paw-*.src.rpm' -exec cp {} out/ \;
+          ls -l out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paw-rpm
+          path: out/*.rpm
+          if-no-files-found: error
+
+  arch:
+    name: Arch Linux package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+      options: --user root
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm base-devel rust cargo pam git sudo
+          # makepkg refuses to run as root, so create a build user
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
+      - uses: actions/checkout@v4
+      - name: Stage PKGBUILD and build
+        run: |
+          cp packaging/arch/PKGBUILD PKGBUILD
+          chown -R builder:builder .
+          sudo -u builder bash -c 'makepkg -sf --noconfirm'
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp paw-*.pkg.tar.* out/
+          ls -l out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paw-archlinux
+          path: out/paw-*.pkg.tar.*
+          if-no-files-found: error

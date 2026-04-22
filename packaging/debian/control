@@ -1,0 +1,23 @@
+Source: paw
+Section: admin
+Priority: optional
+Maintainer: PAW Maintainers <maintainers@example.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cargo,
+ rustc,
+ libpam0g-dev,
+Standards-Version: 4.6.2
+Homepage: https://github.com/vvindetta/paw
+
+Package: paw
+Architecture: any
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ libpam0g,
+Description: Multi-factor PAM authentication with pluggable modules
+ PAW provides a PAM module and a set of submodules that allow combining
+ multiple authentication factors (password, fingerprint, etc.) for GNU/Linux
+ authentication. It is designed to avoid exposing the main system password in
+ unsafe environments by combining a secondary password with additional factors.

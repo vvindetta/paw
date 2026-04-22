@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      # The `pam-bindings` crate under crates/pam is vendored third-party code
+      # (originally from https://github.com/anowell/pam-rs). We check formatting
+      # only on our own packages to avoid modifying upstream code.
+      - name: Check formatting (own packages)
+        run: |
+          cargo fmt -p host -p module_api -p paw_password -p paw_fingerprint -p paw_test -p password_hasher -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam0g-dev
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Run clippy (own packages)
+        run: |
+          cargo clippy -p host -p module_api -p paw_password -p paw_fingerprint -p paw_test -p password_hasher --all-targets -- -D warnings
+
+  build-and-test:
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam0g-dev pamtester
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build workspace
+        run: cargo build --workspace --verbose
+      - name: Run tests
+        run: cargo test --workspace --verbose
+      - name: Verify built artifacts exist
+        run: |
+          test -f target/debug/libhost.so
+          test -f target/debug/libpaw_password.so
+          test -f target/debug/libpaw_fingerprint.so
+          test -f target/debug/password_hasher
