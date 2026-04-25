@@ -1,5 +1,5 @@
 [package]
-name = "host"
+name = "paw"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,4 +10,5 @@ module_api = { path = "../module_api" }
 pam = { path = "../pam", package = "pam-bindings" }
 
 [lib]
+name = "paw"
 crate-type = ["cdylib"]

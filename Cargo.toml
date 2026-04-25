@@ -1,7 +1,7 @@
 [workspace]
 members = [
   "crates/module_api",
-  "crates/host",
+  "crates/paw",
   "crates/pam",
   "modules/test_module",
   "modules/fingerprint",

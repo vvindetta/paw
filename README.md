@@ -1,151 +1,194 @@
-# Multi-factor for PAM. GNU+Linux auth with modules in any combination.
+# PAW is a multi-factor authentication module for Linux [BETA]
+**More precisely, it is a PAM module with submodules that you can mix in any combination.**
 
-![screenshot.jpg](screenshot.jpg)
+![screenshot.jpg](demo.jpg)
 
-**PAW is designed to avoid exposing the main system password when operating in an unsafe environment. Use it instead with a combination such as a secondary-password + fingerprint.** 
-GrapheneOS-like authentication on your GNU/Linux system.
+It helps protect your primary system password in untrusted environments.
+You can define policies such as `LONG_PASSWORD OR (SHORT_PASSWORD + FINGERPRINT)` and require a minimum number of successful factors. It's like in GrapheneOS.
 
-### Roadmap:
-  - minimum number of successfully passed modules option
 
+## Why not just stock PAM config?
+
+PAM is Linux's standard authentication framework, but practical `OR` flows are hard to express in typical configs.  
+PAW adds a dedicated policy layer for this.
+
+---
+
+### PAW is in beta. Roadmap:
+  - Minimum number of successfully passed modules option
+  - Rewrite Roadmap
+  
   Modules:
   - ~~Password~~
   - ~~Fingerprint~~
-  - Faceid
+  - Face ID
   - NFC
   - Trusted Bluetooth/Wi-Fi networks
 
-## How to install
+---
 
-### Install ```paw``` as a PAM module
+## Install
 
-1. Find the PAM modules directory on your system. Common paths:
-   - `/usr/lib64/security` (Fedora-based distros)
-   - `/usr/lib/security` (many Debian/Ubuntu-based distros)
+### 1. Get release binaries
 
-2. Install `pam_paw.so` into that directory:
+- [GitHub](https://github.com/vvindetta/paw/releases) / [Codeberg](https://codeberg.org/vvindetta/paw/releases)
+
+Release files:
+
+- `libpaw.so` - main PAM module
+- `libpaw_password.so` - password submodule
+- `libpaw_fingerprint.so` - fingerprint submodule
+- `password_hasher` - helper tool to generate `/etc/paw_shadow`
+
+### Build from source (optional)
+
+See [BUILD.md](BUILD.md) for dependencies and build commands.
+
+### 2. Resolve PAM module directory
 
 ```bash
-sudo install -m 0644 -o root -g root pam_paw.so /usr/lib64/security/pam_paw.so
+# Debian / Ubuntu (amd64)
+PAM_DIR=/usr/lib/x86_64-linux-gnu/security
+
+# Debian / Ubuntu (arm64)
+PAM_DIR=/usr/lib/aarch64-linux-gnu/security
+
+# Older Debian / Ubuntu releases
+PAM_DIR=/lib/x86_64-linux-gnu/security
+
+# Arch / Alpine
+PAM_DIR=/usr/lib/security
+
+# Fedora / RHEL / CentOS / Alma / Rocky
+PAM_DIR=/usr/lib64/security
+
+# openSUSE
+PAM_DIR=/lib64/security
 ```
 
-### Install ```paw``` submodules
-
-1. Create the ```paw``` directory inside the PAM security directory:
+### 3. Install PAW and submodules
 
 ```bash
-sudo mkdir /lib64/security/paw
+# If you downloaded release binaries into the current directory:
+sudo install -D -m 0644 ./libpaw.so "$PAM_DIR/libpaw.so"
+sudo install -D -m 0644 ./libpaw_password.so "$PAM_DIR/paw/libpaw_password.so"
+sudo install -D -m 0644 ./libpaw_fingerprint.so "$PAM_DIR/paw/libpaw_fingerprint.so"
 ```
 
-3. Place ```paw``` modules in it:
-
-```
-sudo install -m 0644 -o root -g root paw_fingerprint.so /usr/lib64/security/paw_fingerprint.so
-
-sudo install -m 0644 -o root -g root paw_password.so /usr/lib64/security/paw_password.so   
-```
-### Config
-
-Create ```/etc/paw.conf```
 ```bash
+# If you built from source:
+sudo install -D -m 0644 target/release/libpaw.so "$PAM_DIR/libpaw.so"
+sudo install -D -m 0644 target/release/libpaw_password.so "$PAM_DIR/paw/libpaw_password.so"
+sudo install -D -m 0644 target/release/libpaw_fingerprint.so "$PAM_DIR/paw/libpaw_fingerprint.so"
+```
+
+### 4. Configure `/etc/paw.conf`
+
+```bash
+sudo touch /etc/paw.conf
 sudo $EDITOR /etc/paw.conf
 ```
 
 Format (one module per line):
-```
-path_to_paw_module attemps_number
-```
-
-Default attempts_number is 3 if omitted.
-Order in the config affects the execution sequence.
-
-#### Config example: 
-```
-/lib64/security/paw/paw_password.so
-/lib64/security/paw/paw_fingerprint.so 5
-```
-
-### Edit PAM Configuration
-
-To enable ```paw``` in a real PAM service, edit the corresponding file in `/etc/pam.d/`.
-
-#### Example for `sudo`:
-
-Add this line to `/etc/pam.d/sudo`:
 
 ```text
-auth    sufficient    pam_paw.so
-````
-
-#### PAM has control flags for every module:
-
-**requisite**
-* Like `required`, but if it fails: stop immediately and return failure.
-* If it succeeds: continues.
-
-**required**
-* If it fails: authentication will fail, but PAM continues running the rest of the stack.
-* If it succeeds: continues.
-* Final result: any `required` failure makes the whole stack fail.
-
-**sufficient**
-* If it succeeds: stop immediately and return success (if no prior `required`/`requisite` failed).
-* If it fails: ignore the failure and continue.
-
-**optional**
-* Success/failure usually does not affect the result unless it is the only module in that stack.
-
----
-
-## Testing
-
-1. Install ```pamtester``` via your system package manager
-
-2. Create and edit ```/etc/pam.d/paw_testing```:
+path_to_paw_module attempts_number
 ```
-auth    required    pam_paw.so
+
+`attempts_number` defaults to `3` if omitted. Module order in this file is execution order.
+
+
+Config example:
+Use the same base path as your selected `PAM_DIR` value:
+
+```bash
+echo "PAM_DIR=$PAM_DIR"
+```
+
+```text
+YOUR_PAM_DIR/paw/libpaw_password.so
+YOUR_PAM_DIR/paw/libpaw_fingerprint.so 5
+```
+
+## Modules configuration
+
+### Password module
+
+```bash
+# If you downloaded release binaries:
+./password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
+
+# If you built from source:
+./target/release/password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
+
+sudo chmod 600 /etc/paw_shadow
+sudo chown root:root /etc/paw_shadow
+```
+
+### Fingerprint module
+
+Enroll a fingerprint for this user:
+```bash
+fprintd-enroll "$USER"
+```
+
+Distro-specific commands:
+
+```bash
+# Fedora / RHEL / Alma / Rocky 
+sudo authselect disable-feature with-fingerprint
+authselect apply-changes
+```
+
+```bash
+# Debian / Ubuntu
+sudo pam-auth-update --disable fprintd
+```
+
+```bash
+# openSUSE
+sudo pam-config -q --fprintd
+sudo pam-config -d --fprintd
+```
+
+```bash
+# Arch
+btw, you're an Arch user!
+```
+
+### Test with `pamtester` before changing real services
+
+Install `pamtester` with your package manager, then create `/etc/pam.d/paw_testing`:
+
+```text
+auth    required    libpaw.so
 account required    pam_permit.so
 ```
 
-3. Run
+Run:
 
-```pamtester paw_testing $USER authenticate```
-
-## Build
-
-1. Install pam lib
-
-```
-# Debian / Ubuntu
-sudo apt install -y libpam0g-dev
+```bash
+pamtester paw_testing "$USER" authenticate
 ```
 
-```
-# Fedora
-sudo dnf install -y pam-devel
-```
+### Enable in a real PAM service
 
-```
-# Arch
-sudo pacman -S --needed pam
+After successful testing, add `libpaw.so` to the relevant `/etc/pam.d/*` service file (for example `/etc/pam.d/sudo`):
+
+```text
+auth    sufficient    libpaw.so
 ```
 
-2. Git clone
+Control flag priority:
 
-```git clone https://codeberg.org/vvindetta/paw.git && cd paw```
+- PAM evaluates rules top to bottom.
+- `required`: must pass; failure is returned after the stack is processed.
+- `requisite`: like `required`, but fails immediately.
+- `sufficient`: if it passes (and no earlier `required`/`requisite` failed), PAM returns success immediately.
+- `optional`: usually ignored unless it is the only rule affecting that stack.
 
-3. Build
+[PAM docs](https://man7.org/linux/man-pages/man5/pam.d.5.html)
 
-```cargo build```
+## Contributing
 
-The build will be available inside ```paw/target/debug```
-
-#### Main PAM module (controls submodules):
-
-```libhost.so``` -> ```pam_paw.so```
-
-#### Submodules:
-
-```libpaw_fingerprint.so``` -> ```paw_fingerprint.so```
-
-```libpaw_password.so``` -> ```paw_password.so```
+Contributions are welcome: code review, and new authentication modules. Please check the [roadmap](#paw-is-in-beta-roadmap).
