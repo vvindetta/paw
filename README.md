@@ -97,14 +97,13 @@ path_to_paw_module attempts_number
 
 `attempts_number` defaults to `3` if omitted. Module order in this file is execution order.
 
-
-Config example:
 Use the same base path as your selected `PAM_DIR` value:
 
 ```bash
 echo "PAM_DIR=$PAM_DIR"
 ```
 
+Config example:
 ```text
 YOUR_PAM_DIR/paw/libpaw_password.so
 YOUR_PAM_DIR/paw/libpaw_fingerprint.so 5
