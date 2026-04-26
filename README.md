@@ -1,7 +1,9 @@
+![banner](banner.png)
+
 # PAW is a multi-factor authentication module for Linux [BETA]
 **More precisely, it is a PAM module with submodules that you can mix in any combination.**
 
-![screenshot.jpg](demo.jpg)
+![screenshot](demo.jpg)
 
 It helps protect your primary system password in untrusted environments.
 You can define policies such as `LONG_PASSWORD OR (SHORT_PASSWORD + FINGERPRINT)` and require a minimum number of successful factors. It's like in GrapheneOS.
@@ -179,6 +181,8 @@ Control flag priority:
 - `optional`: usually ignored unless it is the only rule affecting that stack.
 
 [PAM docs](https://man7.org/linux/man-pages/man5/pam.d.5.html)
+
+---
 
 ## Contributing
 
