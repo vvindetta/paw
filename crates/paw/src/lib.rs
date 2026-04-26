@@ -68,19 +68,16 @@ pam::pam_hooks!(Paw);
 
 impl PamHooks for Paw {
     fn sm_authenticate(pamh: &mut PamHandle, _args: Vec<&CStr>, _flags: PamFlag) -> PamResultCode {
-        let modules = match get_modules() {
-            Ok(modules_vec) => modules_vec,
-            Err(_) => return PamResultCode::PAM_AUTH_ERR,
+        let Ok(modules) = get_modules() else {
+            return PamResultCode::PAM_AUTH_ERR;
         };
 
-        let username_str = match pamh.get_user(None) {
-            Ok(name) => name,
-            Err(_) => return PamResultCode::PAM_AUTH_ERR,
+        let Ok(username_str) = pamh.get_user(None) else {
+            return PamResultCode::PAM_AUTH_ERR;
         };
 
-        let username_c = match CString::new(username_str) {
-            Ok(value) => value,
-            Err(_) => return PamResultCode::PAM_AUTH_ERR,
+        let Ok(username_c) = CString::new(username_str) else {
+            return PamResultCode::PAM_AUTH_ERR;
         };
 
         for (module, attempts) in modules.iter() {
