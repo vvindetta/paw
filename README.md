@@ -29,9 +29,10 @@ PAW adds a dedicated policy layer for this.
 
 ## Install
 
-### 1. Get release binaries
+### 1. Get binaries
 
-- [GitHub](https://github.com/vvindetta/paw/releases) / [Codeberg](https://codeberg.org/vvindetta/paw/releases)
+- From release page: [GitHub](https://github.com/vvindetta/paw/releases) / [Codeberg](https://codeberg.org/vvindetta/paw/releases)
+- Or [build from source](BUILD.md).
 
 Release files:
 
@@ -39,10 +40,6 @@ Release files:
 - `libpaw_password.so` - password submodule
 - `libpaw_fingerprint.so` - fingerprint submodule
 - `password_hasher` - helper tool to generate `/etc/paw_shadow`
-
-### Build from source (optional)
-
-See [BUILD.md](BUILD.md) for dependencies and build commands.
 
 ### 2. Resolve PAM module directory
 
@@ -69,24 +66,22 @@ PAM_DIR=/lib64/security
 ### 3. Install PAW and submodules
 
 ```bash
-# If you downloaded release binaries into the current directory:
+# Change directory only if you built from source:
+cd target/release
+```
+
+```bash
+# Install binaries:
 sudo install -D -m 0644 ./libpaw.so "$PAM_DIR/libpaw.so"
 sudo install -D -m 0644 ./libpaw_password.so "$PAM_DIR/paw/libpaw_password.so"
 sudo install -D -m 0644 ./libpaw_fingerprint.so "$PAM_DIR/paw/libpaw_fingerprint.so"
 ```
 
-```bash
-# If you built from source:
-sudo install -D -m 0644 target/release/libpaw.so "$PAM_DIR/libpaw.so"
-sudo install -D -m 0644 target/release/libpaw_password.so "$PAM_DIR/paw/libpaw_password.so"
-sudo install -D -m 0644 target/release/libpaw_fingerprint.so "$PAM_DIR/paw/libpaw_fingerprint.so"
-```
 
 ### 4. Configure `/etc/paw.conf`
 
 ```bash
-sudo touch /etc/paw.conf
-sudo $EDITOR /etc/paw.conf
+sudo touch /etc/paw.conf && sudo $EDITOR /etc/paw.conf
 ```
 
 Format (one module per line):
@@ -114,11 +109,7 @@ YOUR_PAM_DIR/paw/libpaw_fingerprint.so 5
 ### Password module
 
 ```bash
-# If you downloaded release binaries:
 ./password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
-
-# If you built from source:
-./target/release/password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
 
 sudo chmod 600 /etc/paw_shadow
 sudo chown root:root /etc/paw_shadow
@@ -126,7 +117,7 @@ sudo chown root:root /etc/paw_shadow
 
 ### Fingerprint module
 
-Enroll a fingerprint for this user:
+Enroll a fingerprint for current user:
 ```bash
 fprintd-enroll "$USER"
 ```
@@ -136,7 +127,7 @@ Distro-specific commands:
 ```bash
 # Fedora / RHEL / Alma / Rocky 
 sudo authselect disable-feature with-fingerprint
-authselect apply-changes
+sudo authselect apply-changes
 ```
 
 ```bash
@@ -155,22 +146,23 @@ sudo pam-config -d --fprintd
 btw, you're an Arch user!
 ```
 
-### Test with `pamtester` before changing real services
+### Test with pamtester before changing the PAM configuration
 
 Install `pamtester` with your package manager, then create `/etc/pam.d/paw_testing`:
 
-```text
+```bash
+sudo tee /etc/pam.d/paw_testing >/dev/null <<'EOF'
 auth    required    libpaw.so
 account required    pam_permit.so
+EOF
 ```
 
 Run:
-
 ```bash
 pamtester paw_testing "$USER" authenticate
 ```
 
-### Enable in a real PAM service
+### Enable PAW a real PAM-service
 
 After successful testing, add `libpaw.so` to the relevant `/etc/pam.d/*` service file (for example `/etc/pam.d/sudo`):
 
