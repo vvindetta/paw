@@ -1,0 +1,10 @@
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: build-release
+    image: rust:1
+    commands:
+      - apt-get update
+      - apt-get install -y --no-install-recommends pkg-config libpam0g-dev
+      - cargo build --workspace --release

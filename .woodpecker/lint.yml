@@ -1,0 +1,11 @@
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: clippy
+    image: rust:1
+    commands:
+      - apt-get update
+      - apt-get install -y --no-install-recommends pkg-config libpam0g-dev
+      - rustup component add clippy
+      - cargo clippy --workspace --all-targets --all-features

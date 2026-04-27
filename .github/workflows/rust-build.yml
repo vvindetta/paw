@@ -1,4 +1,4 @@
-name: Rust Lint
+name: Rust Build
 
 on:
   push:
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  clippy:
-    name: Clippy (stable)
+  build:
+    name: Build (release)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,11 +26,20 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets --all-features
+      - name: Build workspace
+        run: cargo build --workspace --release
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: paw-linux-release-build
+          path: |
+            target/release/libpaw.so
+            target/release/libpaw_password.so
+            target/release/libpaw_fingerprint.so
+            target/release/password_hasher
+          if-no-files-found: error
