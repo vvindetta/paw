@@ -17,15 +17,27 @@ PAW adds a dedicated policy layer for this.
 ---
 
 ### PAW is in beta. Roadmap:
-  - Minimum number of successfully passed modules option
-  - Rewrite Roadmap
-  
+
   Modules:
   - ~~Password~~
   - ~~Fingerprint~~
   - Face ID
   - NFC
   - Trusted Bluetooth/Wi-Fi networks
+
+  Security and quality:
+  - Perform security analysis
+  - Manual installation testing
+  - Add unit tests
+    
+  Build, packaging, distribution:
+  - Evaluate creating an install/setup script
+  - NixOS support, Debian/Fedora packages, AUR build
+
+  Config and policy:
+  - Update config format (for example, TOML)
+  - Add variable for minimum number of passed modules
+  - Define a conditions format for module logic (including `OR`)
 
 ---
 
