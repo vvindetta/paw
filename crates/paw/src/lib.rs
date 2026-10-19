@@ -110,6 +110,7 @@ impl PamHooks for Paw {
                     continue 'groups;
                 }
             }
+            println!();
             return PamResultCode::PAM_SUCCESS;
         }
         return PamResultCode::PAM_AUTH_ERR;

@@ -1,4 +1,4 @@
-<img src="media/banner.png" alt="PAW banner" width="100%">
+![banner](media/banner.png)
 
 # PAW — one interface for multiple auth methods
 
@@ -88,7 +88,7 @@ Generate one password hash file for each password module instance. Set its path 
 For `long_password`:
 
 ```bash
-./password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
+ ./password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
 
 sudo chmod 600 /etc/paw_shadow
 sudo chown root:root /etc/paw_shadow
@@ -97,7 +97,7 @@ sudo chown root:root /etc/paw_shadow
 If using `short_password`, create its separate hash file:
 
 ```bash
-./password_hasher "YOUR_SHORT_PASSWORD" | sudo tee /etc/paw_shadow_short >/dev/null
+ ./password_hasher "YOUR_SHORT_PASSWORD" | sudo tee /etc/paw_shadow_short >/dev/null
 
 sudo chmod 600 /etc/paw_shadow_short
 sudo chown root:root /etc/paw_shadow_short
