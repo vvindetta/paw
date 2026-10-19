@@ -1,9 +1,10 @@
 //! Functions for use in pam modules.
 
-use libc::c_char;
+use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
+use std::marker::PhantomData;
 
-use constants::{PamFlag, PamResultCode};
+use crate::constants::{PamFlag, PamResultCode};
 
 /// Opaque type, used as a pointer when making pam API calls.
 ///
@@ -13,49 +14,59 @@ use constants::{PamFlag, PamResultCode};
 #[repr(C)]
 pub struct PamHandle {
     _data: [u8; 0],
+    /// Force `!Send + !Sync`.
+    ///
+    /// PAM handles are not thread-safe. From the [man page for `pam(3)`][1]:
+    /// > The libpam interfaces are only thread-safe if each thread within
+    /// > the multithreaded application uses its own PAM handle.
+    ///
+    /// [1]: https://man7.org/linux/man-pages/man3/pam.3.html
+    _marker: PhantomData<*const ()>,
 }
 
 #[link(name = "pam")]
-extern "C" {
+unsafe extern "C" {
     fn pam_get_data(
         pamh: *const PamHandle,
         module_data_name: *const c_char,
         data: &mut *const libc::c_void,
-    ) -> PamResultCode;
+    ) -> c_int;
 
     fn pam_set_data(
-        pamh: *const PamHandle,
+        pamh: *mut PamHandle,
         module_data_name: *const c_char,
         data: *mut libc::c_void,
-        cleanup: extern "C" fn(
-            pamh: *const PamHandle,
-            data: *mut libc::c_void,
-            error_status: PamResultCode,
-        ),
-    ) -> PamResultCode;
+        cleanup: extern "C" fn(pamh: *mut PamHandle, data: *mut libc::c_void, error_status: c_int),
+    ) -> c_int;
 
     fn pam_get_item(
         pamh: *const PamHandle,
-        item_type: crate::items::ItemType,
+        item_type: c_int,
         item: &mut *const libc::c_void,
-    ) -> PamResultCode;
+    ) -> c_int;
 
-    fn pam_set_item(
-        pamh: *mut PamHandle,
-        item_type: crate::items::ItemType,
-        item: *const libc::c_void,
-    ) -> PamResultCode;
+    fn pam_set_item(pamh: *mut PamHandle, item_type: c_int, item: *const libc::c_void) -> c_int;
 
-    fn pam_get_user(
-        pamh: *const PamHandle,
-        user: &mut *mut c_char,
-        prompt: *const c_char,
-    ) -> PamResultCode;
+    fn pam_get_user(pamh: *mut PamHandle, user: &mut *const c_char, prompt: *const c_char)
+    -> c_int;
 }
 
-pub extern "C" fn cleanup<T>(_: *const PamHandle, c_data: *mut libc::c_void, _: PamResultCode) {
-    unsafe {
+extern "C" fn cleanup<T>(_: *mut PamHandle, c_data: *mut libc::c_void, _: c_int) {
+    // Defensive null check, PAM shouldn't normally hand us null here
+    if c_data.is_null() {
+        return;
+    }
+    // A panic on Drop for T must not unwind across the C boundary
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let _data: Box<T> = Box::from_raw(c_data.cast::<T>());
+    }));
+    // Dropping the above result can itself panic, and is surprisingly difficult to get right.
+    // From the docs for catch_unwind:
+    // > Finally, be careful in how you drop the result of this function. If it is Err, it contains the panic payload, and dropping that may in turn panic!
+    // See: https://internals.rust-lang.org/t/some-thoughts-on-a-less-slippery-catch-unwind/16902/4
+    if let Err(payload) = result {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload)))
+            .map_err(std::mem::forget);
     }
 }
 
@@ -66,51 +77,58 @@ impl PamHandle {
     /// previously.
     ///
     /// See `pam_get_data` in
-    /// http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html
+    /// <http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html>
     ///
     /// # Errors
     ///
-    /// Returns an error if the underlying PAM function call fails.
+    /// - [`PamResultCode`] if the lookup itself fails.
+    /// - [`PamResultCode::PAM_BUF_ERR`] if the key string bytes contain an internal 0 byte.
+    /// - [`PamResultCode::PAM_SYSTEM_ERR`] if PAM reports success but yields a null pointer.
     ///
     /// # Safety
     ///
     /// The data stored under the provided key must be of type `T` otherwise the
-    /// behaviour of this funtion is undefined.
+    /// behaviour of this function is undefined.
     pub unsafe fn get_data<'a, T>(&'a self, key: &str) -> PamResult<&'a T> {
-        let c_key = CString::new(key).unwrap();
+        let c_key = CString::new(key).map_err(|_| PamResultCode::PAM_BUF_ERR)?;
         let mut ptr: *const libc::c_void = std::ptr::null();
-        let res = pam_get_data(self, c_key.as_ptr(), &mut ptr);
-        if PamResultCode::PAM_SUCCESS == res && !ptr.is_null() {
-            let typed_ptr = ptr.cast::<T>();
-            let data: &T = &*typed_ptr;
-            Ok(data)
-        } else {
-            Err(res)
+        let res = PamResultCode::from_raw(unsafe { pam_get_data(self, c_key.as_ptr(), &mut ptr) });
+        if PamResultCode::PAM_SUCCESS != res {
+            return Err(res);
         }
+        if ptr.is_null() {
+            return Err(PamResultCode::PAM_SYSTEM_ERR);
+        }
+        let typed_ptr = ptr.cast::<T>();
+        let data: &T = unsafe { &*typed_ptr };
+        Ok(data)
     }
 
     /// Stores a value that can be retrieved later with `get_data`.  The value lives
     /// as long as the current pam cycle.
     ///
     /// See `pam_set_data` in
-    /// http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html
+    /// <http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html>
     ///
     /// # Errors
     ///
-    /// Returns an error if the underlying PAM function call fails.
-    pub fn set_data<T>(&self, key: &str, data: Box<T>) -> PamResult<()> {
-        let c_key = CString::new(key).unwrap();
-        let res = unsafe {
+    /// - [`PamResultCode`] if the store itself fails.
+    /// - [`PamResultCode::PAM_BUF_ERR`] if the key string contains a 0 byte.
+    pub fn set_data<T: 'static>(&mut self, key: &str, data: Box<T>) -> PamResult<()> {
+        let c_key = CString::new(key).map_err(|_| PamResultCode::PAM_BUF_ERR)?;
+        let ptr = Box::into_raw(data);
+        let res = PamResultCode::from_raw(unsafe {
             pam_set_data(
                 self,
                 c_key.as_ptr(),
-                Box::into_raw(data).cast::<libc::c_void>(),
+                ptr.cast::<libc::c_void>(),
                 cleanup::<T>,
             )
-        };
+        });
         if PamResultCode::PAM_SUCCESS == res {
             Ok(())
         } else {
+            drop(unsafe { Box::from_raw(ptr) });
             Err(res)
         }
     }
@@ -119,27 +137,23 @@ impl PamHandle {
     /// particularly useful for getting a `PamConv` reference.
     ///
     /// See `pam_get_item` in
-    /// http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html
+    /// <http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html>
     ///
     /// # Errors
     ///
     /// Returns an error if the underlying PAM function call fails.
-    pub fn get_item<T: crate::items::Item>(&self) -> PamResult<Option<T>> {
+    pub fn get_item<'a, T: crate::items::Item<'a>>(&'a self) -> PamResult<Option<T>> {
         let mut ptr: *const libc::c_void = std::ptr::null();
-        let (res, item) = unsafe {
-            let r = pam_get_item(self, T::type_id(), &mut ptr);
-            let typed_ptr = ptr.cast::<T::Raw>();
-            let t = if typed_ptr.is_null() {
-                None
-            } else {
-                Some(T::from_raw(typed_ptr))
-            };
-            (r, t)
-        };
-        if PamResultCode::PAM_SUCCESS == res {
-            Ok(item)
+        let res =
+            PamResultCode::from_raw(unsafe { pam_get_item(self, T::type_id() as c_int, &mut ptr) });
+        if PamResultCode::PAM_SUCCESS != res {
+            return Err(res);
+        }
+        let typed_ptr = ptr.cast::<T::Raw>();
+        if typed_ptr.is_null() {
+            Ok(None)
         } else {
-            Err(res)
+            Ok(Some(unsafe { T::from_raw(typed_ptr) }))
         }
     }
 
@@ -149,18 +163,19 @@ impl PamHandle {
     /// Note that all items are strings, except `PAM_CONV` and `PAM_FAIL_DELAY`.
     ///
     /// See `pam_set_item` in
-    /// http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html
+    /// <http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html>
     ///
     /// # Errors
     ///
     /// Returns an error if the underlying PAM function call fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the provided item key contains a nul byte
-    pub fn set_item_str<T: crate::items::Item>(&mut self, item: T) -> PamResult<()> {
-        let res =
-            unsafe { pam_set_item(self, T::type_id(), item.into_raw().cast::<libc::c_void>())};
+    pub fn set_item_str<'a, T: crate::items::Item<'a>>(&mut self, item: T) -> PamResult<()> {
+        let res = PamResultCode::from_raw(unsafe {
+            pam_set_item(
+                self,
+                T::type_id() as c_int,
+                item.into_raw().cast::<libc::c_void>(),
+            )
+        });
         if PamResultCode::PAM_SUCCESS == res {
             Ok(())
         } else {
@@ -172,34 +187,36 @@ impl PamHandle {
     ///
     /// This is really a specialization of `get_item`.
     ///
+    /// This may prompt via the conversation and set the `PAM_USER` item.
+    /// It therefore takes `&mut self`, unlike the read-only item accessors.
+    ///
     /// See `pam_get_user` in
-    /// http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html
+    /// <http://www.linux-pam.org/Linux-PAM-html/mwg-expected-by-module-item.html>
     ///
     /// # Errors
     ///
-    /// Returns an error if the underlying PAM function call fails.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the provided prompt string contains a nul byte
-    pub fn get_user(&self, prompt: Option<&str>) -> PamResult<String> {
-        let mut ptr: *mut c_char = std::ptr::null_mut();
-        let prompt_string;
-        let c_prompt = match prompt {
-            Some(p) => {
-                prompt_string = CString::new(p).unwrap();
-                prompt_string.as_ptr()
-            }
-            None => std::ptr::null(),
-        };
-        let res = unsafe { pam_get_user(self, &mut ptr, c_prompt) };
-        if PamResultCode::PAM_SUCCESS == res && !ptr.is_null() {
-            let const_ptr = ptr as *const c_char;
-            let bytes = unsafe { CStr::from_ptr(const_ptr).to_bytes() };
-            String::from_utf8(bytes.to_vec()).map_err(|_| PamResultCode::PAM_CONV_ERR)
-        } else {
-            Err(res)
+    /// - [`PamResultCode`] if the lookup itself fails.
+    /// - [`PamResultCode::PAM_BUF_ERR`] if the prompt string contains a 0 byte.
+    /// - [`PamResultCode::PAM_SYSTEM_ERR`] if PAM reports success but yields a null pointer.
+    /// - [`PamResultCode::PAM_SYSTEM_ERR`] if the returned username is not valid UTF-8.
+    pub fn get_user(&mut self, prompt: Option<&str>) -> PamResult<String> {
+        let mut ptr: *const c_char = std::ptr::null();
+        let prompt_string = prompt
+            .map(CString::new)
+            .transpose()
+            .map_err(|_| PamResultCode::PAM_BUF_ERR)?;
+        let c_prompt = prompt_string
+            .as_ref()
+            .map_or(std::ptr::null(), |s| s.as_ptr());
+        let res = PamResultCode::from_raw(unsafe { pam_get_user(self, &mut ptr, c_prompt) });
+        if PamResultCode::PAM_SUCCESS != res {
+            return Err(res);
         }
+        if ptr.is_null() {
+            return Err(PamResultCode::PAM_SYSTEM_ERR);
+        }
+        let bytes = unsafe { CStr::from_ptr(ptr).to_bytes() };
+        String::from_utf8(bytes.to_vec()).map_err(|_| PamResultCode::PAM_SYSTEM_ERR)
     }
 }
 
@@ -251,5 +268,43 @@ pub trait PamHooks {
     /// authenticated but before a session has been established.
     fn sm_setcred(pamh: &mut PamHandle, args: Vec<&CStr>, flags: PamFlag) -> PamResultCode {
         PamResultCode::PAM_IGNORE
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cleanup_disaster_scenarios() {
+        // PAM is not expected to call cleanup with null data, but we must handle it regardless
+        cleanup::<String>(std::ptr::null_mut(), std::ptr::null_mut(), 0);
+
+        // Scenario 1
+        // T::drop panics
+        {
+            struct Bomb;
+            impl Drop for Bomb {
+                fn drop(&mut self) {
+                    panic!();
+                }
+            }
+            let ptr = Box::into_raw(Box::new(Bomb)).cast::<libc::c_void>();
+            cleanup::<Bomb>(std::ptr::null_mut(), ptr, 0);
+        }
+
+        // Scenario 2
+        // Every payload's Drop spawns another panic
+        {
+            struct BombRecursive;
+            impl Drop for BombRecursive {
+                fn drop(&mut self) {
+                    std::panic::panic_any(Self);
+                }
+            }
+            let ptr = Box::into_raw(Box::new(BombRecursive)).cast::<libc::c_void>();
+            cleanup::<BombRecursive>(std::ptr::null_mut(), ptr, 0);
+        }
     }
 }

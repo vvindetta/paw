@@ -1,4 +1,5 @@
-#[repr(u32)]
+#[repr(i32)]
+#[non_exhaustive]
 pub enum ItemType {
     /// The service name
     Service = 1,
@@ -8,7 +9,7 @@ pub enum ItemType {
     Tty = 3,
     /// The remote host name
     RHost = 4,
-    /// The pam_conv structure
+    /// The `pam_conv` structure
     Conv = 5,
     /// The authentication token (password)
     AuthTok = 6,
@@ -24,12 +25,37 @@ pub enum ItemType {
     XDisplay = 11,
     /// X :server authentication data
     XAuthData = 12,
-    /// The type for pam_get_authtok
+    /// The type for `pam_get_authtok`
     AuthTokType = 13,
 }
 
-// A type that can be requested by `pam::Handle::get_item`.
-pub trait Item {
+/// A type that can be requested by [`crate::module::PamHandle::get_item`].
+///
+/// This trait is sealed. The following code will not compile:
+///
+/// ```compile_fail,E0277
+/// use pam::items::{Item, ItemType};
+/// use std::ffi::c_char;
+///
+/// struct MyItem;
+///
+/// impl<'a> Item<'a> for MyItem {
+///     type Raw = c_char;
+///
+///     fn type_id() -> ItemType {
+///         ItemType::User
+///     }
+///
+///     unsafe fn from_raw(_raw: *const c_char) -> Self {
+///         Self
+///     }
+///
+///     fn into_raw(self) -> *const c_char {
+///         std::ptr::null()
+///     }
+/// }
+/// ```
+pub trait Item<'a>: private::Sealed {
     /// The `repr(C)` type that is returned (by pointer) by the underlying `pam_get_item` function.
     type Raw;
 
@@ -40,12 +66,19 @@ pub trait Item {
     ///
     /// # Safety
     ///
-    /// This function can assume the pointer is a valid pointer to a `Self::Raw` instance.
+    /// This function can assume the pointer is a valid pointer to a `Self::Raw` instance valid for `'a`.
     unsafe fn from_raw(raw: *const Self::Raw) -> Self;
 
     /// The function to convert from this wrapper type to a C-compatible pointer.
     fn into_raw(self) -> *const Self::Raw;
 }
+
+/// Seals [`Item`].
+mod private {
+    pub trait Sealed {}
+}
+
+impl private::Sealed for crate::conv::Conv<'_> {}
 
 macro_rules! cstr_item {
     ($name:ident) => {
@@ -59,7 +92,9 @@ macro_rules! cstr_item {
             }
         }
 
-        impl<'s> Item for $name<'s> {
+        impl private::Sealed for $name<'_> {}
+
+        impl<'s> Item<'s> for $name<'s> {
             type Raw = libc::c_char;
 
             fn type_id() -> ItemType {
@@ -67,7 +102,7 @@ macro_rules! cstr_item {
             }
 
             unsafe fn from_raw(raw: *const Self::Raw) -> Self {
-                Self(std::ffi::CStr::from_ptr(raw))
+                unsafe { Self(std::ffi::CStr::from_ptr(raw)) }
             }
 
             fn into_raw(self) -> *const Self::Raw {
@@ -82,7 +117,58 @@ cstr_item!(User);
 cstr_item!(Tty);
 cstr_item!(RHost);
 // Conv
-cstr_item!(AuthTok);
-cstr_item!(OldAuthTok);
 cstr_item!(RUser);
 cstr_item!(UserPrompt);
+
+macro_rules! secret_cstr_item {
+    ($name:ident, $doc:expr) => {
+        #[doc = $doc]
+        ///
+        /// Borrow from PAM-owned memory.
+        pub struct $name<'s>(&'s std::ffi::CStr);
+
+        impl<'s> $name<'s> {
+            /// Borrow the raw secret bytes without a null terminator.
+            #[must_use]
+            #[allow(clippy::missing_const_for_fn)]
+            pub fn as_bytes(&self) -> &[u8] {
+                self.0.to_bytes()
+            }
+
+            /// Return an owned copy of the bytes.
+            #[must_use]
+            pub fn to_owned_secret(&self) -> $crate::secret::SecretBytes {
+                $crate::secret::SecretBytes::new(self.0.to_bytes().to_vec())
+            }
+        }
+
+        impl std::fmt::Debug for $name<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_tuple(stringify!($name))
+                    .field(&"[redacted]")
+                    .finish()
+            }
+        }
+
+        impl private::Sealed for $name<'_> {}
+
+        impl<'s> Item<'s> for $name<'s> {
+            type Raw = libc::c_char;
+
+            fn type_id() -> ItemType {
+                ItemType::$name
+            }
+
+            unsafe fn from_raw(raw: *const Self::Raw) -> Self {
+                unsafe { Self(std::ffi::CStr::from_ptr(raw)) }
+            }
+
+            fn into_raw(self) -> *const Self::Raw {
+                self.0.as_ptr()
+            }
+        }
+    };
+}
+
+secret_cstr_item!(AuthTok, "The user's current authentication token.");
+secret_cstr_item!(OldAuthTok, "The user's previous authentication token.");

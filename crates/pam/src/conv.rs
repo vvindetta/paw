@@ -2,10 +2,14 @@ use libc::{c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::ptr;
 
-use constants::PamResultCode;
-use constants::PamMessageStyle;
-use items::Item;
-use module::PamResult;
+use crate::constants::PamMessageStyle;
+use crate::constants::PamResultCode;
+use crate::constants::{
+    PAM_ERROR_MSG, PAM_PROMPT_ECHO_OFF, PAM_PROMPT_ECHO_ON, PAM_RADIO_TYPE, PAM_TEXT_INFO,
+};
+use crate::items::Item;
+use crate::module::PamResult;
+use crate::secret::{SecretBytes, zeroize_raw};
 
 #[repr(C)]
 struct PamMessage {
@@ -15,7 +19,7 @@ struct PamMessage {
 
 #[repr(C)]
 struct PamResponse {
-    resp: *const c_char,
+    resp: *mut c_char,
     resp_retcode: libc::c_int, // Unused - always zero
 }
 
@@ -26,58 +30,97 @@ struct PamResponse {
 /// will be relayed back.
 #[repr(C)]
 pub struct Inner {
-    conv: extern "C" fn(
-        num_msg: c_int,
-        pam_message: &&PamMessage,
-        pam_response: &mut *const PamResponse,
-        appdata_ptr: *const libc::c_void,
-    ) -> PamResultCode,
-    appdata_ptr: *const libc::c_void,
+    conv: Option<
+        extern "C" fn(
+            num_msg: c_int,
+            pam_message: *mut *const PamMessage,
+            pam_response: *mut *mut PamResponse,
+            appdata_ptr: *mut libc::c_void,
+        ) -> c_int,
+    >,
+    appdata_ptr: *mut libc::c_void,
 }
 
 pub struct Conv<'a>(&'a Inner);
 
-impl<'a> Conv<'a> {
+impl Conv<'_> {
     /// Sends a message to the pam client.
     ///
     /// This will typically result in the user seeing a message or a prompt.
     /// There are several message styles available:
     ///
-    /// - PAM_PROMPT_ECHO_OFF
-    /// - PAM_PROMPT_ECHO_ON
-    /// - PAM_ERROR_MSG
-    /// - PAM_TEXT_INFO
-    /// - PAM_RADIO_TYPE
-    /// - PAM_BINARY_PROMPT
+    /// - `PAM_PROMPT_ECHO_OFF`
+    /// - `PAM_PROMPT_ECHO_ON`
+    /// - `PAM_ERROR_MSG`
+    /// - `PAM_TEXT_INFO`
+    /// - `PAM_RADIO_TYPE`
     ///
     /// Note that the user experience will depend on how the client implements
     /// these message styles - and not all applications implement all message
     /// styles.
-    pub fn send(&self, style: PamMessageStyle, msg: &str) -> PamResult<Option<&CStr>> {
-        let mut resp_ptr: *const PamResponse = ptr::null();
-        let msg_cstr = CString::new(msg).unwrap();
+    ///
+    /// # Returns
+    ///
+    /// - [`SecretBytes`] carrying the user's reply.
+    /// - [`None`] if the conversation returns no input.
+    ///
+    /// # Errors
+    ///
+    /// - [`PamResultCode`] if the conversation call fails.
+    /// - [`PamResultCode::PAM_BUF_ERR`] if the message string bytes contain an internal 0 byte.
+    /// - [`PamResultCode::PAM_CONV_ERR`] if no conversation function was registered.
+    /// - [`PamResultCode::PAM_CONV_ERR`] if the conversation succeeds but returns a null response pointer.
+    /// - [`PamResultCode::PAM_CONV_ERR`] if `style` is unsupported.
+    pub fn send(&self, style: PamMessageStyle, msg: &str) -> PamResult<Option<SecretBytes>> {
+        // Only string-based styles are supported; binary prompts and unknown styles are rejected.
+        match style {
+            PAM_PROMPT_ECHO_OFF | PAM_PROMPT_ECHO_ON | PAM_ERROR_MSG | PAM_TEXT_INFO
+            | PAM_RADIO_TYPE => {}
+            _ => return Err(PamResultCode::PAM_CONV_ERR),
+        }
+        let Some(conv_fn) = self.0.conv else {
+            return Err(PamResultCode::PAM_CONV_ERR);
+        };
+        let mut resp_ptr: *mut PamResponse = ptr::null_mut();
+        let msg_cstr = CString::new(msg).map_err(|_| PamResultCode::PAM_BUF_ERR)?;
         let msg = PamMessage {
             msg_style: style,
             msg: msg_cstr.as_ptr(),
         };
+        let mut msg_ptr: *const PamMessage = &raw const msg;
 
-        let ret = (self.0.conv)(1, &&msg, &mut resp_ptr, self.0.appdata_ptr);
-
-        if PamResultCode::PAM_SUCCESS == ret {
-            // PamResponse.resp is null for styles that don't return user input like PAM_TEXT_INFO
-            let response = unsafe { (*resp_ptr).resp };
-            if response.is_null() {
-                Ok(None)
-            } else {
-                Ok(Some(unsafe { CStr::from_ptr(response) }))
-            }
-        } else {
-            Err(ret)
+        let ret = PamResultCode::from_raw(conv_fn(
+            1,
+            &raw mut msg_ptr,
+            &raw mut resp_ptr,
+            self.0.appdata_ptr,
+        ));
+        if PamResultCode::PAM_SUCCESS != ret {
+            return Err(ret);
         }
+        if resp_ptr.is_null() {
+            return Err(PamResultCode::PAM_CONV_ERR);
+        }
+
+        // PAM spec: the module owns freeing the response array and each resp string.
+        let resp_field = unsafe { (*resp_ptr).resp };
+        // resp is null for message styles that don't yield input, e.g. PAM_TEXT_INFO.
+        let response = if resp_field.is_null() {
+            None
+        } else {
+            // Copy into a buffer that will be zeroed out when dropped
+            let bytes = unsafe { CStr::from_ptr(resp_field) }.to_bytes().to_vec();
+            // Zero out the libc buffer before freeing it
+            unsafe { zeroize_raw(resp_field.cast(), bytes.len()) };
+            unsafe { libc::free(resp_field.cast()) };
+            Some(SecretBytes::new(bytes))
+        };
+        unsafe { libc::free(resp_ptr.cast()) };
+        Ok(response)
     }
 }
 
-impl<'a> Item for Conv<'a> {
+impl<'a> Item<'a> for Conv<'a> {
     type Raw = Inner;
 
     fn type_id() -> crate::items::ItemType {
@@ -85,10 +128,86 @@ impl<'a> Item for Conv<'a> {
     }
 
     unsafe fn from_raw(raw: *const Self::Raw) -> Self {
-        Self(&*raw)
+        unsafe { Self(&*raw) }
     }
 
     fn into_raw(self) -> *const Self::Raw {
-        self.0 as _
+        std::ptr::from_ref(self.0)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::panic, clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use crate::constants::PAM_BINARY_PROMPT;
+
+    /// A conversation function that should never run used for testing.
+    extern "C" fn unreachable_conv(
+        _: c_int,
+        _: *mut *const PamMessage,
+        _: *mut *mut PamResponse,
+        _: *mut libc::c_void,
+    ) -> c_int {
+        panic!("this conversation function shouldn't run");
+    }
+
+    /// A test case for the [`Conv::send`] method.
+    struct SendTestCase {
+        inner: Inner,
+        style: PamMessageStyle,
+        expected: PamResult<Option<SecretBytes>>,
+        message: &'static str,
+    }
+
+    #[test]
+    fn send_error_cases() {
+        let test_cases: Vec<SendTestCase> = vec![
+            // Error on binary prompt
+            SendTestCase {
+                inner: Inner {
+                    conv: Some(unreachable_conv),
+                    appdata_ptr: ptr::null_mut(),
+                },
+                style: PAM_BINARY_PROMPT,
+                expected: Err(PamResultCode::PAM_CONV_ERR),
+                message: "",
+            },
+            // Error on unknown style
+            SendTestCase {
+                inner: Inner {
+                    conv: Some(unreachable_conv),
+                    appdata_ptr: ptr::null_mut(),
+                },
+                style: c_int::MIN,
+                expected: Err(PamResultCode::PAM_CONV_ERR),
+                message: "",
+            },
+            // Error if no conversation function is provided
+            SendTestCase {
+                inner: Inner {
+                    conv: None,
+                    appdata_ptr: ptr::null_mut(),
+                },
+                style: PAM_PROMPT_ECHO_OFF,
+                expected: Err(PamResultCode::PAM_CONV_ERR),
+                message: "",
+            },
+            // Error if message contains internal 0 byte
+            SendTestCase {
+                inner: Inner {
+                    conv: Some(unreachable_conv),
+                    appdata_ptr: ptr::null_mut(),
+                },
+                style: PAM_PROMPT_ECHO_OFF,
+                expected: Err(PamResultCode::PAM_BUF_ERR),
+                message: "PAM is fun\0sometimes",
+            },
+        ];
+
+        for test_case in test_cases {
+            let actual = Conv(&test_case.inner).send(test_case.style, test_case.message);
+            assert_eq!(test_case.expected.unwrap_err(), actual.unwrap_err());
+        }
     }
 }
