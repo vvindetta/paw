@@ -37,6 +37,9 @@ extern "C" fn authenticate(attempts: i32, username: *const c_char, _config: *con
         if output.status.success() {
             return success();
         }
+        print!("\r[\x1b[31mX\x1b[0m]");
+        io::stdout().flush().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
     fail()
 }
