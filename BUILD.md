@@ -17,21 +17,6 @@ sudo dnf install -y gcc pkgconf-pkg-config pam-devel fprintd
 sudo pacman -S --needed base-devel pkgconf pam fprintd
 ```
 
-```bash
-# openSUSE (Tumbleweed / Leap)
-sudo zypper install -y gcc pkgconf-pkg-config pam-devel fprintd
-```
-
-```bash
-# Alpine Linux
-sudo apk add build-base pkgconf linux-pam-dev fprintd
-```
-
-```bash
-# Gentoo
-sudo emerge --ask virtual/pkgconfig sys-libs/pam sys-auth/fprintd
-```
-
 ## Build
 
 ```bash

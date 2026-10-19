@@ -3,7 +3,7 @@
 # PAW — one interface for multiple auth methods
 
 
-PAW extends Linux PAM with a collection of authentication modules with same user interface.
+PAW extends Linux PAM with a collection of authentication modules that share the same user interface.
 
 You can combine them like this:
 
@@ -11,8 +11,7 @@ You can combine them like this:
 
 **Beta**: Try it, report issues, and contribute.
 
-<img src="media/demo.gif" alt="PAW authentication demo" width="100%">
-
+![demo](media/demo.gif)
 
 ---
 
