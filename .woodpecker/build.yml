@@ -8,3 +8,4 @@ steps:
       - apt-get update
       - apt-get install -y --no-install-recommends pkg-config libpam0g-dev
       - cargo build --workspace --release
+      - cp paw_config.toml target/release/paw_config.toml

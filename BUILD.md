@@ -36,6 +36,7 @@ sudo emerge --ask virtual/pkgconfig sys-libs/pam sys-auth/fprintd
 
 ```bash
 cargo build --release
+cp paw_config.toml target/release/paw_config.toml
 ```
 
 Build output directory:
@@ -48,3 +49,4 @@ Main artifacts:
 - `libpaw_password.so`
 - `libpaw_fingerprint.so`
 - `password_hasher`
+- `paw_config.toml`

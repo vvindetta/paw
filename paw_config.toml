@@ -1,3 +1,7 @@
+# Installed as /etc/paw_config.toml.
+# Set absolute module paths for your distribution, then uncomment the desired
+# policy groups and their module definitions. Paths do not expand shell variables.
+#
 # Authentication policy
 #
 # ["short_password", "fingerprint"] is a group.
@@ -5,6 +9,8 @@
 # A group succeeds when all its modules succeed.
 #
 # Groups are tried in order; modules run from left to right.
+# Each group must contain at least one module, and each name must have a module
+# definition below. An empty policy denies authentication.
 #
 # Example policy means:
 # (short_password AND fingerprint) OR long_password

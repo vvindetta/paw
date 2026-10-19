@@ -47,7 +47,7 @@ impl PamHooks for Paw {
             return PamResultCode::PAM_AUTH_ERR;
         };
 
-        let Ok(config_text) = std::fs::read_to_string("/etc/paw.toml") else {
+        let Ok(config_text) = std::fs::read_to_string("/etc/paw_config.toml") else {
             return PamResultCode::PAM_AUTH_ERR;
         };
         let Ok(config) = toml::from_str::<toml::Table>(&config_text) else {
@@ -93,8 +93,10 @@ impl PamHooks for Paw {
 
                 let default_config = Value::Table(toml::Table::new());
                 let module_config = module.get("config").unwrap_or(&default_config);
-
-                let Ok(module_config_c) = CString::new(module_config.as_str()) else {
+                let Ok(module_config_string) = toml::to_string(module_config) else {
+                    return PamResultCode::PAM_AUTH_ERR;
+                };
+                let Ok(module_config_c) = CString::new(module_config_string) else {
                     return PamResultCode::PAM_AUTH_ERR;
                 };
 

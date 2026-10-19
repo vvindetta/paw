@@ -1,51 +1,37 @@
-![banner](banner.png)
+<img src="media/banner.png" alt="PAW banner" width="100%">
 
-# PAW is a multi-factor authentication module for Linux [BETA]
-**More precisely, it is a PAM module with submodules that you can mix in any combination.**
-
-![screenshot](demo.jpg)
-
-It helps protect your primary system password in untrusted environments.
-You can define policies such as `LONG_PASSWORD OR (SHORT_PASSWORD + FINGERPRINT)` and require a minimum number of successful factors. It's like in GrapheneOS.
+# PAW — one interface for multiple auth methods
 
 
-## Why not just stock PAM config?
+PAW extends Linux PAM with a collection of authentication modules with same user interface.
 
-PAM is Linux's standard authentication framework, but practical `OR` flows are hard to express in typical configs.  
-PAW adds a dedicated policy layer for this.
+You can combine them like this:
+
+`long_password OR (fingerprint AND pin)`
+
+**Beta**: Try it, report issues, and contribute.
+
+<img src="media/demo.gif" alt="PAW authentication demo" width="100%">
+
 
 ---
 
-### PAW is in beta. Roadmap:
+### Roadmap:
+  - NixOS support
+  - Password input through the PAM conversation interface
 
   Modules:
   - ~~Password~~
   - ~~Fingerprint~~
-  - Face ID
   - NFC
   - Trusted Bluetooth/Wi-Fi networks
 
-  Security and quality:
-  - Perform security analysis
-  - Manual installation testing
-  - Add unit tests
-    
-  Build, packaging, distribution:
-  - Evaluate creating an install/setup script
-  - NixOS support, Debian/Fedora packages, AUR build
-
-  Config and policy:
-  - Update config format (for example, TOML)
-  - Add variable for minimum number of passed modules
-  - Define a conditions format for module logic (including `OR`)
-
----
 
 ## Install
 
 ### 1. Get binaries
 
-- From release page: [GitHub](https://github.com/vvindetta/paw/releases) / [Codeberg](https://codeberg.org/vvindetta/paw/releases)
+- From the release page: [GitHub](https://github.com/vvindetta/paw/releases) / [Codeberg](https://codeberg.org/vvindetta/paw/releases)
 - Or [build from source](BUILD.md).
 
 Release files:
@@ -54,6 +40,7 @@ Release files:
 - `libpaw_password.so` - password submodule
 - `libpaw_fingerprint.so` - fingerprint submodule
 - `password_hasher` - helper tool to generate `/etc/paw_shadow`
+- `paw_config.toml` - configuration template
 
 ### 2. Resolve PAM module directory
 
@@ -72,17 +59,9 @@ PAM_DIR=/usr/lib/security
 
 # Fedora / RHEL / CentOS / Alma / Rocky
 PAM_DIR=/usr/lib64/security
-
-# openSUSE
-PAM_DIR=/lib64/security
 ```
 
 ### 3. Install PAW and submodules
-
-```bash
-# Change directory only if you built from source:
-cd target/release
-```
 
 ```bash
 # Install binaries:
@@ -92,35 +71,22 @@ sudo install -D -m 0644 ./libpaw_fingerprint.so "$PAM_DIR/paw/libpaw_fingerprint
 ```
 
 
-### 4. Configure `/etc/paw.conf`
+### 4. Install the configuration
+
+Install `paw_config.toml`, then edit it following the comments inside:
 
 ```bash
-sudo touch /etc/paw.conf && sudo $EDITOR /etc/paw.conf
+sudo install -m 0644 ./paw_config.toml /etc/paw_config.toml
+sudoedit /etc/paw_config.toml
 ```
 
-Format (one module per line):
-
-```text
-path_to_paw_module attempts_number
-```
-
-`attempts_number` defaults to `3` if omitted. Module order in this file is execution order.
-
-Use the same base path as your selected `PAM_DIR` value:
-
-```bash
-echo "PAM_DIR=$PAM_DIR"
-```
-
-Config example:
-```text
-YOUR_PAM_DIR/paw/libpaw_password.so
-YOUR_PAM_DIR/paw/libpaw_fingerprint.so 5
-```
-
-## Modules configuration
+## Module configuration
 
 ### Password module
+
+Generate one password hash file for each password module instance. Set its path in `/etc/paw_config.toml`.
+
+For `long_password`:
 
 ```bash
 ./password_hasher "YOUR_LONG_PASSWORD" | sudo tee /etc/paw_shadow >/dev/null
@@ -129,9 +95,18 @@ sudo chmod 600 /etc/paw_shadow
 sudo chown root:root /etc/paw_shadow
 ```
 
+If using `short_password`, create its separate hash file:
+
+```bash
+./password_hasher "YOUR_SHORT_PASSWORD" | sudo tee /etc/paw_shadow_short >/dev/null
+
+sudo chmod 600 /etc/paw_shadow_short
+sudo chown root:root /etc/paw_shadow_short
+```
+
 ### Fingerprint module
 
-Enroll a fingerprint for current user:
+Enroll a fingerprint for the current user:
 ```bash
 fprintd-enroll "$USER"
 ```
@@ -171,12 +146,13 @@ account required    pam_permit.so
 EOF
 ```
 
-Run:
+Run from an interactive terminal:
+
 ```bash
 pamtester paw_testing "$USER" authenticate
 ```
 
-### Enable PAW a real PAM-service
+### Enable PAW for a PAM service
 
 After successful testing, add `libpaw.so` to the relevant `/etc/pam.d/*` service file (for example `/etc/pam.d/sudo`):
 
@@ -193,9 +169,3 @@ Control flag priority:
 - `optional`: usually ignored unless it is the only rule affecting that stack.
 
 [PAM docs](https://man7.org/linux/man-pages/man5/pam.d.5.html)
-
----
-
-## Contributing
-
-Contributions are welcome: code review, and new authentication modules. Please check the [roadmap](#paw-is-in-beta-roadmap).
