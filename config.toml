@@ -1,0 +1,52 @@
+# Authentication policy
+#
+# ["short_password", "fingerprint"] is a group.
+# You can create many groups, but only one needs to succeed.
+# A group succeeds when all its modules succeed.
+#
+# Groups are tried in order; modules run from left to right.
+#
+# Example policy means:
+# (short_password AND fingerprint) OR long_password
+policy = [
+    # ["short_password", "fingerprint"],
+    # ["long_password"],
+]
+
+
+# Define modules
+#
+# Example configuration for the 'libpaw_password' module:
+[modules.long_password]
+path = "/usr/lib64/security/paw/libpaw_password.so"
+attempts = 2
+config = { shadow_file = "/etc/paw_shadow" }
+#
+# [modules.your_name]
+# Give each module a name to reference in 'policy'.
+# You can define the same module under different names with different settings.
+#
+# path = "path_to_your_module"
+# Set the path to your module from appropriate security directory:
+# Debian/Ubuntu (x86_64): /usr/lib/x86_64-linux-gnu/security/paw/
+# Fedora/RHEL (x86_64): /usr/lib64/security/paw/
+#
+# config = { shadow_file = "/etc/paw_shadow" }
+# Each module also has its own settings.
+# For example, the password module requires 'shadow_file'.
+# All modules have an 'attempts' setting, which defaults to 3.
+
+
+# Templates for other modules
+
+# [modules.short_password]
+# path = "/usr/lib64/security/paw/libpaw_password.so"
+# config = { shadow_file = "/etc/paw_shadow_short" }
+
+# [modules.fingerprint]
+# path = "/usr/lib64/security/paw/libpaw_fingerprint.so"
+
+# Development only: this module always returns success.
+# [modules.test]
+# path = "/usr/lib64/security/paw/libpaw_test.so"
+# attempts = 1

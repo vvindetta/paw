@@ -1,9 +1,10 @@
-use module_api::Module;
 use std::ffi::{c_char, CStr};
 use std::io::{self, Write};
 use std::process::Command;
 
-extern "C" fn authenticate(attempts: i32, username: *const c_char) -> u32 {
+use module_api::Module;
+
+extern "C" fn authenticate(attempts: i32, username: *const c_char, _config: *const c_char) -> u32 {
     fn success() -> u32 {
         io::stdout().flush().unwrap();
         print!("\r\x1b[2K[\x1b[32mOK\x1b[0m] Fingerprint\n");

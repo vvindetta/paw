@@ -1,5 +1,4 @@
-use module_api::Module;
-use std::ffi::c_char;
+use std::ffi::{c_char, CStr};
 use std::fs::File;
 use std::io::{self, Write};
 use std::io::{BufRead, BufReader};
@@ -9,7 +8,9 @@ use argon2::{
     Argon2,
 };
 
-extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
+use module_api::Module;
+
+extern "C" fn authenticate(attempts: i32, _username: *const c_char, config: *const c_char) -> u32 {
     fn success() -> u32 {
         io::stdout().flush().unwrap();
         print!("\r\x1b[2K[\x1b[32mOK\x1b[0m] Password\n");
@@ -21,28 +22,34 @@ extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
         1
     }
 
-    let path_to_password_hash = "/etc/paw_shadow";
+    let config_c: String = unsafe {
+        CStr::from_ptr(config as *const c_char)
+            .to_string_lossy()
+            .into_owned()
+    };
+    let Ok(config) = toml::from_str::<toml::Table>(config_c.as_str()) else {
+        return fail(
+            "Password: failed to parse module settings. Check the configuration syntax."
+                .to_string(),
+        );
+    };
+    let Some(shadow_file) = config["shadow_file"].as_str() else {
+        return fail(
+            "Password: 'shadow_file' must be a string containing the path to the password hash file."
+                .to_string(),
+        );
+    };
 
-    let file_handle = match File::open(path_to_password_hash) {
+    let file_handle = match File::open(shadow_file) {
         Ok(file_handle) => file_handle,
-        Err(_) => {
-            return fail(format!(
-                "Password: failed to open {}",
-                path_to_password_hash
-            ))
-        }
+        Err(_) => return fail(format!("Password: failed to open {}", shadow_file)),
     };
     let reader = BufReader::new(file_handle);
 
     let password_hash = match reader.lines().next() {
         Some(Ok(line)) => line,
-        Some(Err(_)) => {
-            return fail(format!(
-                "Password: failed to read {}",
-                path_to_password_hash
-            ))
-        }
-        None => return fail(format!("Password: file is empty {}", path_to_password_hash)),
+        Some(Err(_)) => return fail(format!("Password: failed to read {}", shadow_file)),
+        None => return fail(format!("Password: file is empty {}", shadow_file)),
     };
     let parsed_hash = match PasswordHash::new(&password_hash) {
         Ok(hash) => hash,
@@ -52,7 +59,7 @@ extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
     print!("\r\x1b[2K"); // clear current line
     print!("\n"); // create UI line
     print!("\x1b[1A"); // go back to UI line
-    print!("\x1b[s"); // save cursor at UI line
+    print!("\x1b[s"); // save the cursor position on the UI line
     io::stdout().flush().unwrap();
 
     for counter in 0..attempts {
@@ -67,7 +74,10 @@ extern "C" fn authenticate(attempts: i32, _username: *const c_char) -> u32 {
 
         let password = match rpassword::read_password() {
             Ok(password) => password,
-            Err(_) => return fail("Password: failed read password".to_string()),
+            Err(_) => {
+                print!("\x1b[u"); // return to the saved prompt position
+                return fail("Password: failed to read password".to_string());
+            }
         };
 
         // restore to prompt position (UI line), clear tail
