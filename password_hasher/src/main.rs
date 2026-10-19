@@ -2,11 +2,8 @@ use std::env;
 use std::error::Error;
 
 use argon2::{
-    password_hash::{
-        rand_core::OsRng,
-        PasswordHasher, SaltString
-    },
-    Argon2
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
+    Argon2,
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -21,7 +18,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         .hash_password(password.as_bytes(), &salt)
         .map_err(|hash_error| format!("argon2 hash error: {hash_error}"))?
         .to_string();
-
 
     println!("{}", password_hash);
     Ok(())
